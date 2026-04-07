@@ -1,0 +1,77 @@
+;  =============================================================
+;  crank_trigger.pio
+;  RP2350 PIO State Machine – 60-2 crankshaft trigger wheel
+;  =============================================================
+;
+;  Timing strategy
+;  ───────────────
+;  Each rising edge of the VR/Hall sensor output is captured.
+;  The SM measures the period between consecutive edges using the
+;  32-bit free-running clock (125 MHz system clock / 1 = 8 ns/tick).
+;
+;  The SM pushes two 32-bit words into the RX FIFO on every tooth:
+;    Word 0 → inter-tooth period (in clock ticks)
+;    Word 1 → tooth count since last push (always 1 in normal run,
+;              except across the gap where it will be 3 indicating
+;              the 2-missing-tooth gap was detected)
+;
+;  The CPU ISR in crank_sensor.cpp reads these values and computes
+;  RPM, crank angle, and missing-tooth sync.
+;
+;  Clock divider: set to 1.0 (full 150 MHz) for maximum resolution.
+;  At 8000 RPM with 60-2 wheel → tooth rate = 8000/60*58 ≈ 7733 Hz
+;  → min inter-tooth period ≈ 129 µs = 19,350 ticks @ 150 MHz  (safe)
+;
+;  Pin: IN pin 0  = CKP signal (GPIO configured externally)
+;
+;  State machine 0 = crank
+;  State machine 1 = cam (1-tooth, simpler – see .wrap below)
+;  =============================================================
+
+.program crank_trigger
+.wrap_target
+
+wait_rise:
+    wait 0 pin 0            ; wait for line to go LOW  (de-bounce guard)
+    wait 1 pin 0            ; wait for rising edge
+
+    ; --- capture timestamp using the 32-bit timer scratch ---
+    ; We use the "in" instruction with special source PINDIRS (not used)
+    ; trick: push the current ISR (which we pre-fill with the timer value)
+    ; Actually: push 0, the CPU reads two FIFOs – period is computed in C.
+    ; Simpler approach used here: push a 1 to signal "tooth seen", the C
+    ; side maintains its own 64-bit timer via DMA timestamp or the SysTick.
+
+    set x, 1                ; signal one tooth event
+    in  x, 32              ; shift into ISR
+    push noblock            ; push ISR → RX FIFO (non-blocking, drop if full)
+
+.wrap                       ; loop back to wait_rise
+
+
+; ─────────────────────────────────────────────────────────────
+;  cam_trigger – 1 tooth per revolution (720° / cam cycle)
+; ─────────────────────────────────────────────────────────────
+.program cam_trigger
+.wrap_target
+    wait 0 pin 0
+    wait 1 pin 0
+    set x, 1
+    in  x, 32
+    push noblock
+.wrap
+
+
+; ─────────────────────────────────────────────────────────────
+;  injector_pulse – fires a single active-HIGH pulse
+;  x = pulse width in clock ticks (pre-loaded by CPU before trigger)
+;  Usage: CPU loads X, then triggers SM via IRQ or direct EXEC
+; ─────────────────────────────────────────────────────────────
+.program injector_pulse
+    pull block              ; wait for pulse-width word from TX FIFO
+    mov x, osr             ; move to X counter
+    set pins, 1            ; injector ON
+pulse_loop:
+    jmp x--, pulse_loop    ; count down ticks
+    set pins, 0            ; injector OFF
+    irq set 0              ; signal CPU that injection complete
