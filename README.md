@@ -1,4 +1,4 @@
-[ECU_EFI_UAV_Introduction.md](https://github.com/user-attachments/files/26529955/ECU_EFI_UAV_Introduction.md)
+
 # 引擎電控單元（ECU）與電子燃油噴射（EFI）編程技術入門
 ## ── 兼論車規級 ECU 移植至無人機活塞引擎之設計要點 ──
 
