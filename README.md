@@ -9,6 +9,7 @@
 > 技術主題：引擎電控單元 · 電子燃油噴射 · 卡爾曼濾波器 · 無人機活塞引擎 · 嵌入式系統開發
 
 ---
+<img width="739" height="956" alt="image (20)" src="https://github.com/user-attachments/assets/2434fb2d-e156-4033-b494-c07f8bc3a21e" />
 
 ## 1. 簡介
 
